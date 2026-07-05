@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TV Uzaktan Kumanda</string>
+
+    <!-- Discovery screen -->
+    <string name="discovery_title">Cihaz Bul</string>
+    <string name="discovery_scanning">Ağ üzerinde Android TV cihazları aranıyor…</string>
+    <string name="discovery_bluetooth_scanning">Bluetooth cihazları taranıyor…</string>
+    <string name="discovery_empty_state">Henüz bir cihaz bulunamadı. TV\'nizin ve telefonunuzun aynı Wi-Fi ağında olduğundan emin olun.</string>
+    <string name="discovery_rescan">Yeniden Tara</string>
+    <string name="discovery_network_section">Ağda Bulunanlar (Android TV Remote Protokolü)</string>
+    <string name="discovery_bluetooth_section">Bluetooth Cihazları</string>
+    <string name="discovery_manual_entry">IP adresiyle manuel bağlan</string>
+    <string name="discovery_manual_ip_hint">Örn. 192.168.1.42</string>
+    <string name="discovery_connect_action">Bağlan</string>
+    <string name="discovery_permission_rationale">Cihazları bulabilmek için Bluetooth ve konum izinleri gereklidir.</string>
+    <string name="discovery_grant_permissions">İzinleri Ver</string>
+
+    <!-- Pairing screen -->
+    <string name="pairing_title">Eşleştirme</string>
+    <string name="pairing_waiting_for_tv">TV ekranınızda görünen kodu girin</string>
+    <string name="pairing_code_hint">6 haneli kod</string>
+    <string name="pairing_confirm">Onayla</string>
+    <string name="pairing_in_progress">Eşleştiriliyor…</string>
+    <string name="pairing_success">Eşleştirme başarılı!</string>
+    <string name="pairing_failed">Eşleştirme başarısız oldu. Kodu kontrol edip tekrar deneyin.</string>
+    <string name="pairing_cancel">İptal</string>
+
+    <!-- Remote screen -->
+    <string name="remote_connected_via_network">Wi-Fi (Android TV Remote Protokolü)</string>
+    <string name="remote_connected_via_bluetooth">Bluetooth (HID Uzaktan Kumanda)</string>
+    <string name="remote_connecting">Bağlanıyor…</string>
+    <string name="remote_disconnected">Bağlantı kesildi</string>
+    <string name="remote_reconnect">Yeniden Bağlan</string>
+    <string name="remote_forget_device">Bu cihazı unut</string>
+    <string name="remote_dpad_up">Yukarı</string>
+    <string name="remote_dpad_down">Aşağı</string>
+    <string name="remote_dpad_left">Sol</string>
+    <string name="remote_dpad_right">Sağ</string>
+    <string name="remote_ok">Tamam</string>
+    <string name="remote_home">Ana Ekran</string>
+    <string name="remote_back">Geri</string>
+    <string name="remote_menu">Menü</string>
+    <string name="remote_volume_up">Ses Aç</string>
+    <string name="remote_volume_down">Ses Kıs</string>
+    <string name="remote_mute">Sessiz</string>
+    <string name="remote_play_pause">Oynat / Duraklat</string>
+    <string name="remote_power">Güç</string>
+    <string name="remote_shortcut_youtube">YouTube</string>
+    <string name="remote_shortcut_play_store">Google Play</string>
+    <string name="remote_shortcut_tv_plus">TV+</string>
+    <string name="remote_touchpad_toggle">Touchpad Modu</string>
+    <string name="remote_touchpad_hint">Parmağınızla kaydırarak imleci hareket ettirin, dokunarak seçin</string>
+    <string name="remote_keyboard_toggle">Klavye Gönder</string>
+    <string name="remote_keyboard_hint">Yazın, TV\'ye tuş tuş gönderilecek</string>
+    <string name="remote_keyboard_send">Gönder</string>
+    <string name="remote_keyboard_placeholder">Metin yazın…</string>
+    <string name="remote_now_playing_prefix">Şu an açık: %1$s</string>
+    <string name="remote_bluetooth_feature_unavailable">Bu özellik yalnızca Wi-Fi bağlantısında kullanılabilir</string>
+
+    <!-- Generic -->
+    <string name="action_close">Kapat</string>
+    <string name="action_retry">Tekrar Dene</string>
+    <string name="error_generic">Bir şeyler ters gitti: %1$s</string>
+</resources>

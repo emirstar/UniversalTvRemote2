@@ -1,0 +1,99 @@
+syntax = "proto3";
+
+package com.batin.tvremote.proto.pairing;
+
+option java_package = "com.batin.tvremote.proto.pairing";
+option java_multiple_files = true;
+option optimize_for = LITE_RUNTIME;
+
+// ---------------------------------------------------------------------------
+// Android TV Remote Protocol v2 - PAIRING channel (TCP port 6467, TLS).
+//
+// This schema is NOT published by Google. It has been reconstructed from the
+// community reverse-engineering of the protocol used by the official
+// "Android TV Remote Service" (com.google.android.tv.remote.service), the
+// same one the Google TV / Google Home mobile apps use. Field numbers below
+// have been validated against captured byte traces of a real pairing
+// exchange, so they should match the wire format even though Google has
+// never published this .proto file itself.
+//
+// The handshake, in order, is:
+//   1) client -> server : PairingMessage{ pairing_request }
+//      server -> client : PairingMessage{ pairing_request_ack }
+//   2) client -> server : PairingMessage{ pairing_option }
+//      server -> client : PairingMessage{ pairing_option }   (server's choice)
+//   3) client -> server : PairingMessage{ pairing_configuration }
+//      server -> client : PairingMessage{ pairing_configuration_ack }
+//      -> TV now shows a 6-character hex code on screen.
+//   4) client -> server : PairingMessage{ pairing_secret }   (hash incl. code)
+//      server -> client : PairingMessage{ pairing_secret }   (server's hash)
+//      -> if both hashes match, pairing succeeded and the client's TLS
+//         certificate is now trusted by the TV for future connections.
+// ---------------------------------------------------------------------------
+
+message PairingMessage {
+  int32 protocol_version = 1;
+  Status status = 2;
+
+  PairingRequest pairing_request = 10;
+  PairingRequestAck pairing_request_ack = 11;
+
+  PairingOption pairing_option = 20;
+
+  PairingConfiguration pairing_configuration = 30;
+  PairingConfigurationAck pairing_configuration_ack = 31;
+
+  PairingSecret pairing_secret = 40;
+}
+
+enum Status {
+  STATUS_UNKNOWN = 0;
+  STATUS_OK = 200;
+  STATUS_ERROR = 400;
+  STATUS_BAD_CONFIGURATION = 401;
+}
+
+message PairingRequest {
+  string service_name = 1;
+  string client_name = 2;
+}
+
+message PairingRequestAck {
+}
+
+enum RoleType {
+  ROLE_TYPE_UNDEFINED = 0;
+  ROLE_TYPE_INPUT = 1;
+  ROLE_TYPE_OUTPUT = 2;
+}
+
+enum EncodingType {
+  ENCODING_TYPE_UNDEFINED = 0;
+  ENCODING_TYPE_ALPHANUMERIC = 1;
+  ENCODING_TYPE_NUMERIC = 2;
+  ENCODING_TYPE_HEXADECIMAL = 3;
+  ENCODING_TYPE_QRCODE = 4;
+}
+
+message PairingEncoding {
+  EncodingType type = 1;
+  int32 symbol_length = 2;
+}
+
+message PairingOption {
+  PairingEncoding input_encoding = 1;
+  PairingEncoding output_encoding = 2;
+  RoleType preferred_role = 3;
+}
+
+message PairingConfiguration {
+  PairingEncoding encoding = 1;
+  RoleType client_role = 2;
+}
+
+message PairingConfigurationAck {
+}
+
+message PairingSecret {
+  bytes secret = 1;
+}
