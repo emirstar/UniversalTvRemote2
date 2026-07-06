@@ -8,6 +8,9 @@ import com.batin.tvremote.proto.remote.RemoteAppLinkLaunchRequest
 import com.batin.tvremote.proto.remote.RemoteConfigure
 import com.batin.tvremote.proto.remote.RemoteDeviceInfo
 import com.batin.tvremote.proto.remote.RemoteDirection
+import com.batin.tvremote.proto.remote.RemoteEditInfo
+import com.batin.tvremote.proto.remote.RemoteImeBatchEdit
+import com.batin.tvremote.proto.remote.RemoteImeObject
 import com.batin.tvremote.proto.remote.RemoteKeyInject
 import com.batin.tvremote.proto.remote.RemoteMessage
 import com.batin.tvremote.proto.remote.RemotePingResponse
@@ -42,6 +45,15 @@ class AtvRemoteClient @Inject constructor(
     private var readerJob: Job? = null
     private val writeMutex = Mutex()
 
+    // Populated once the TV's first remote_configure tells us what it supports; must be
+    // echoed back verbatim whenever the TV later asks for remote_set_active (see readLoop).
+    @Volatile private var activeFeatures: Int = 0
+
+    // Updated whenever the TV sends us a remote_ime_batch_edit of its own; sendText() must
+    // reuse the latest counters the TV gave us, not start from zero every time.
+    @Volatile private var imeCounter: Int = 0
+    @Volatile private var imeFieldCounter: Int = 0
+
     private val _events = MutableSharedFlow<TransportEvent>(extraBufferCapacity = 32)
     override val events: SharedFlow<TransportEvent> = _events
 
@@ -75,30 +87,38 @@ class AtvRemoteClient @Inject constructor(
                     )
                 }
 
-                // The TV speaks first on this channel, announcing itself.
+                // The TV speaks first on this channel, announcing which features it supports.
                 val greeting = receive(newSocket)
                 check(greeting.hasRemoteConfigure()) { "TV'den beklenmeyen ilk mesaj alındı" }
 
+                // BUGFIX: previously this always echoed back a fixed CLIENT_CODE regardless
+                // of what the TV said it supports, and unconditionally sent our own
+                // remote_set_active immediately instead of waiting for (and correctly
+                // replying to) the TV's own remote_set_active request in the read loop. The
+                // TV may not treat the input channel as fully active - silently dropping key
+                // presses - until it gets a properly negotiated reply. We now intersect our
+                // desired features with what the TV advertised, exactly like every reference
+                // client of this protocol, and remember the result so readLoop can echo the
+                // *same* value back when remote_set_active is requested.
+                activeFeatures = DESIRED_FEATURES and greeting.remoteConfigure.code1
                 send(
                     newSocket,
                     RemoteMessage.newBuilder()
                         .setRemoteConfigure(
                             RemoteConfigure.newBuilder()
-                                .setCode1(CLIENT_CODE)
+                                .setCode1(activeFeatures)
                                 .setDeviceInfo(
                                     RemoteDeviceInfo.newBuilder()
                                         .setUnknown1(1)
-                                        .setUnknown2(APP_VERSION)
+                                        // BUGFIX: reference implementations always send the
+                                        // literal string "1" here, not the app version. The
+                                        // true meaning of this field is undocumented, so we
+                                        // match the known-working value instead of guessing.
+                                        .setUnknown2("1")
                                         .setPackageName(PACKAGE_NAME)
                                         .setAppVersion(APP_VERSION)
                                 )
                         )
-                        .build()
-                )
-                send(
-                    newSocket,
-                    RemoteMessage.newBuilder()
-                        .setRemoteSetActive(RemoteSetActive.newBuilder().setActive(1))
                         .build()
                 )
 
@@ -124,6 +144,28 @@ class AtvRemoteClient @Inject constructor(
                                     .build()
                             )
                         }
+                    }
+
+                    // BUGFIX: previously unhandled (fell through to the `else` branch below),
+                    // so the TV's request to activate the input channel never got a reply.
+                    // Some TVs/firmware only start delivering key presses to the foreground
+                    // app once this handshake step completes correctly.
+                    message.hasRemoteSetActive() -> {
+                        writeMutex.withLock {
+                            send(
+                                activeSocket,
+                                RemoteMessage.newBuilder()
+                                    .setRemoteSetActive(RemoteSetActive.newBuilder().setActive(activeFeatures))
+                                    .build()
+                            )
+                        }
+                    }
+
+                    // The TV echoes its own ime/field counters back to us periodically;
+                    // sendText() must reuse the latest values it has seen, not always send 0.
+                    message.hasRemoteImeBatchEdit() -> {
+                        imeCounter = message.remoteImeBatchEdit.imeCounter
+                        imeFieldCounter = message.remoteImeBatchEdit.fieldCounter
                     }
 
                     message.hasRemoteImeKeyInject() -> {
@@ -162,12 +204,32 @@ class AtvRemoteClient @Inject constructor(
         injectKey(code, direction)
     }
 
+    // BUGFIX: previously this typed text one character at a time via RemoteKeyInject,
+    // which can only replay key codes that already exist in the RemoteKeyCode enum -
+    // Turkish letters like ç/ğ/ı/ö/ş/ü have no such key code and were silently dropped
+    // (or transliterated). remote_ime_batch_edit instead carries the literal UTF-8 string
+    // directly to the TV's IME, which is what the official app uses and supports any
+    // Unicode text without needing a key code for every character.
     override suspend fun sendText(text: String) = withContext(Dispatchers.IO) {
-        for (character in text) {
-            val (code, needsShift) = AndroidKeyCodeMapper.mapChar(character) ?: continue
-            if (needsShift) injectKey(com.batin.tvremote.proto.remote.RemoteKeyCode.KEYCODE_SHIFT_LEFT, RemoteDirection.DIRECTION_START_LONG)
-            injectKey(code, RemoteDirection.DIRECTION_SHORT)
-            if (needsShift) injectKey(com.batin.tvremote.proto.remote.RemoteKeyCode.KEYCODE_SHIFT_LEFT, RemoteDirection.DIRECTION_END_LONG)
+        if (text.isEmpty()) return@withContext
+        val activeSocket = socket ?: return@withContext
+        val cursor = text.length - 1
+        val imeObject = RemoteImeObject.newBuilder()
+            .setStart(cursor)
+            .setEnd(cursor)
+            .setValue(text)
+            .build()
+        val editInfo = RemoteEditInfo.newBuilder()
+            .setInsert(1)
+            .setTextFieldStatus(imeObject)
+            .build()
+        val batchEdit = RemoteImeBatchEdit.newBuilder()
+            .setImeCounter(imeCounter)
+            .setFieldCounter(imeFieldCounter)
+            .addEditInfo(editInfo)
+            .build()
+        writeMutex.withLock {
+            send(activeSocket, RemoteMessage.newBuilder().setRemoteImeBatchEdit(batchEdit).build())
         }
     }
 
@@ -231,7 +293,19 @@ class AtvRemoteClient @Inject constructor(
     }
 
     companion object {
-        private const val CLIENT_CODE = 622
+        // Feature bits from the RemoteConfigure.code1 bitmask (cross-checked against
+        // captured traces, same values used by every reference client of this protocol).
+        // Voice search is deliberately excluded: it requires streaming microphone audio to
+        // the TV, out of scope for a button/touch remote.
+        private const val FEATURE_PING = 1 shl 0
+        private const val FEATURE_KEY = 1 shl 1
+        private const val FEATURE_IME = 1 shl 2
+        private const val FEATURE_POWER = 1 shl 5
+        private const val FEATURE_VOLUME = 1 shl 6
+        private const val FEATURE_APP_LINK = 1 shl 9
+        private const val DESIRED_FEATURES =
+            FEATURE_PING or FEATURE_KEY or FEATURE_IME or FEATURE_POWER or FEATURE_VOLUME or FEATURE_APP_LINK
+
         private const val PACKAGE_NAME = "com.batin.tvremote"
         private const val APP_VERSION = "1.0.0"
         private const val STEP_THRESHOLD_DP = 24f

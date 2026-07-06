@@ -45,7 +45,17 @@ class BluetoothDiscoverer @Inject constructor(
                 trySend(device.toTvDevice())
             }
         }
-        context.registerReceiver(receiver, IntentFilter(BluetoothDevice.ACTION_FOUND))
+        // BUGFIX: with targetSdk 33+, the platform requires every dynamically registered
+        // receiver to explicitly declare RECEIVER_EXPORTED or RECEIVER_NOT_EXPORTED; calling
+        // the old 2-arg registerReceiver(receiver, filter) throws a SecurityException at
+        // runtime on Android 13+ instead of just being deprecated. ACTION_FOUND is a system
+        // broadcast (sent by the Bluetooth stack, not another app of ours), so it must be
+        // RECEIVER_EXPORTED.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, IntentFilter(BluetoothDevice.ACTION_FOUND), Context.RECEIVER_EXPORTED)
+        } else {
+            context.registerReceiver(receiver, IntentFilter(BluetoothDevice.ACTION_FOUND))
+        }
         runCatching { bluetoothAdapter.startDiscovery() }
 
         awaitClose {

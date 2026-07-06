@@ -3,6 +3,7 @@ package com.batin.tvremote.data.discovery
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import com.batin.tvremote.data.model.ConnectionType
 import com.batin.tvremote.data.model.TvDevice
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -26,8 +27,20 @@ class NetworkDiscoverer @Inject constructor(
     private val nsdManager: NsdManager by lazy {
         context.getSystemService(Context.NSD_SERVICE) as NsdManager
     }
+    private val wifiManager: WifiManager by lazy {
+        context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    }
 
     fun discover(): Flow<TvDevice> = callbackFlow {
+        // IMPROVEMENT: some devices apply aggressive Wi-Fi power-saving multicast
+        // filtering that silently drops the mDNS responses this discovery depends on.
+        // Holding a multicast lock while scanning is the standard fix and costs nothing
+        // once released.
+        val multicastLock = wifiManager.createMulticastLock("tvremote-mdns").apply {
+            setReferenceCounted(true)
+            runCatching { acquire() }
+        }
+
         val pendingQueue = ArrayDeque<NsdServiceInfo>()
         var resolving = false
 
@@ -87,6 +100,7 @@ class NetworkDiscoverer @Inject constructor(
 
         awaitClose {
             runCatching { nsdManager.stopServiceDiscovery(discoveryListener) }
+            runCatching { if (multicastLock.isHeld) multicastLock.release() }
         }
     }
 

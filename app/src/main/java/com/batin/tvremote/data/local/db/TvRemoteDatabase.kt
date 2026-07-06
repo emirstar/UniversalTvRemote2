@@ -6,7 +6,7 @@ import androidx.room.RoomDatabase
 @Database(
     entities = [TvDeviceEntity::class],
     version = 1,
-    exportSchema = true
+    exportSchema = false
 )
 abstract class TvRemoteDatabase : RoomDatabase() {
     abstract fun tvDeviceDao(): TvDeviceDao

@@ -16,6 +16,7 @@ import com.batin.tvremote.data.remote.TransportEvent
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.withContext
@@ -127,7 +128,6 @@ class BluetoothHidClient @Inject constructor(
             is HidKeyMapper.Mapping.Consumer -> pulseConsumer(mapping.bit)
         }
     }
-
     @SuppressLint("MissingPermission")
     override suspend fun sendText(text: String) = withContext(Dispatchers.IO) {
         for (character in text) {
@@ -158,19 +158,25 @@ class BluetoothHidClient @Inject constructor(
     override suspend fun launchApp(target: String): Boolean = false
 
     @SuppressLint("MissingPermission")
-    private fun pulseKeyboard(usage: Int, shift: Boolean) {
+    private suspend fun pulseKeyboard(usage: Int, shift: Boolean) {
         val device = target ?: return
         val proxy = hidProxy ?: return
         val modifier = if (shift) HidReportDescriptors.MODIFIER_LEFT_SHIFT else 0
         proxy.sendReport(device, HidReportDescriptors.KEYBOARD_REPORT_ID.toInt(), HidReportDescriptors.keyboardReport(modifier, usage))
+        // BUGFIX: press and release were sent back-to-back with no gap. Some Bluetooth HID
+        // hosts (including several Android TV boxes) coalesce or drop reports sent within
+        // the same connection interval, so a press could be silently swallowed. A short
+        // delay makes the two reports land in separate intervals.
+        delay(HID_PULSE_GAP_MS)
         proxy.sendReport(device, HidReportDescriptors.KEYBOARD_REPORT_ID.toInt(), HidReportDescriptors.emptyKeyboardReport())
     }
 
     @SuppressLint("MissingPermission")
-    private fun pulseConsumer(bit: Int) {
+    private suspend fun pulseConsumer(bit: Int) {
         val device = target ?: return
         val proxy = hidProxy ?: return
         proxy.sendReport(device, HidReportDescriptors.CONSUMER_REPORT_ID.toInt(), HidReportDescriptors.consumerReport(bit))
+        delay(HID_PULSE_GAP_MS)
         proxy.sendReport(device, HidReportDescriptors.CONSUMER_REPORT_ID.toInt(), HidReportDescriptors.emptyConsumerReport())
     }
 
@@ -194,6 +200,7 @@ class BluetoothHidClient @Inject constructor(
         private const val SDP_DESCRIPTION = "Android TV HID Remote"
         private const val SDP_PROVIDER = "batin"
         private const val PROXY_TIMEOUT_MS = 8_000L
+        private const val HID_PULSE_GAP_MS = 30L
         private const val REGISTRATION_TIMEOUT_MS = 8_000L
         private const val CONNECT_TIMEOUT_MS = 20_000L
     }

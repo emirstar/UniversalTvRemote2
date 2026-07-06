@@ -144,6 +144,16 @@ class AtvPairingSession internal constructor(
 
             val mySecret = computePairingSecret(clientPublicKey, serverPublicKey, code)
 
+            // Fast local sanity check (matches every reference implementation of this
+            // protocol): the code's first byte is itself derived from this same hash by
+            // the TV, so if it doesn't match here the user almost certainly mistyped the
+            // code - no need to round-trip to the TV to find that out.
+            val expectedFirstByte = code.substring(0, 2).toInt(16)
+            val actualFirstByte = mySecret[0].toInt() and 0xFF
+            if (actualFirstByte != expectedFirstByte) {
+                error("Kod hatalı görünüyor. TV ekranındaki kodu kontrol edip tekrar deneyin.")
+            }
+
             AtvPairingClient.send(
                 socket,
                 PairingMessage.newBuilder()
@@ -154,11 +164,19 @@ class AtvPairingSession internal constructor(
             )
 
             val response = AtvPairingClient.receive(socket)
-            check(response.status == Status.STATUS_OK) { "TV, girilen kodu reddetti" }
-
-            val theirSecret = response.pairingSecret.secret.toByteArray()
-            if (!theirSecret.contentEquals(mySecret)) {
-                error("Kod eşleşmedi. TV ekranındaki kodu tekrar kontrol edip deneyin.")
+            // BUGFIX: the previous version compared `response.pairingSecret.secret` against
+            // our own hash, but the server's reply populates `pairing_secret_ack` (field 41),
+            // not `pairing_secret` (field 40) - see pairing.proto. `pairingSecret` on the
+            // response was always empty, so this comparison failed on every single pairing
+            // attempt regardless of whether the code was correct. The reference
+            // implementations of this protocol only check the status code here; they do not
+            // re-verify the hash (the TV has already validated it - that's what determined
+            // the status).
+            check(response.status == Status.STATUS_OK) {
+                "TV, girilen kodu reddetti. Kodu kontrol edip tekrar deneyin."
+            }
+            check(response.hasPairingSecretAck()) {
+                "Beklenmeyen yanıt: TV'den pairing_secret_ack bekleniyordu"
             }
 
             AtvWireProtocol.sha256Fingerprint(serverCertificate)

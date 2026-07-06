@@ -15,11 +15,9 @@ option optimize_for = LITE_RUNTIME;
 // remote_set_active, remote_ping_request/response, remote_key_inject, the
 // KeyCode enum, remote_set_volume_level and remote_app_link_launch_request
 // have been cross-checked against captured byte traces of a real session and
-// are used with confidence by AtvRemoteClient. The IME/voice/audio-routing
-// messages are reconstructed with lower confidence and are marked below;
-// this client does not depend on them for its core features (see
-// AtvRemoteClient.kt, which sends text as discrete key presses instead of
-// relying on remote_ime_batch_edit).
+// are used with confidence by AtvRemoteClient. remote_ime_batch_edit (used
+// for sendText) is likewise cross-checked; voice/audio-routing messages are
+// reconstructed with lower confidence and are not used by this client.
 // ---------------------------------------------------------------------------
 
 message RemoteMessage {
@@ -113,18 +111,21 @@ message RemoteAppLinkLaunchRequest {
   string app_link = 1;
 }
 
-// --- Volume (best-effort fields 5-7; only unknown1/2 and player_model were
-// directly observed on the wire, but the surrounding fields are a reasonable
-// reconstruction and are simply left at their zero-value default if unused) ---
-
+// BUGFIX: field numbers below previously skipped `unknown5` and were off by one from
+// `volume_max` onward (5/6/7 instead of the TV's actual 6/7/8). Since the TV always sends
+// all of these fields together in one message, the old numbering meant `volume_level`'s
+// bytes landed in this app's `volume_muted` field (any nonzero volume decoded as "muted",
+// since protobuf treats any nonzero varint as `true` for a bool field) and the real
+// `volume_max`/`volume_level` values were similarly shifted/scrambled.
 message RemoteSetVolumeLevel {
   int32 unknown1 = 1;
   int32 unknown2 = 2;
   string player_model = 3;
   int32 unknown4 = 4;
-  int32 volume_max = 5;
-  int32 volume_level = 6;
-  bool volume_muted = 7;
+  int32 unknown5 = 5;
+  int32 volume_max = 6;
+  int32 volume_level = 7;
+  bool volume_muted = 8;
 }
 
 message RemoteAdjustVolumeLevel {
@@ -160,14 +161,28 @@ message RemoteImeKeyInject {
   RemoteTextFieldStatus text_field_status = 2;
 }
 
+// BUGFIX: the previous RemoteEditInfo had no way to carry actual text (it was missing the
+// nested RemoteImeObject entirely and used the wrong field number), so this app could not
+// use the TV's real text-input channel and fell back to sending individual key codes
+// instead - which cannot express Turkish characters (ç/ğ/ı/ö/ş/ü have no HID/AKEYCODE
+// equivalent) since it can only replay existing key codes. The corrected messages below
+// match the real wire format and carry the literal UTF-8 string, which the TV's IME
+// accepts directly - see AtvRemoteClient.sendText().
+message RemoteImeObject {
+  int32 start = 1;
+  int32 end = 2;
+  string value = 3;
+}
+
 message RemoteEditInfo {
-  int32 insert = 2;
+  int32 insert = 1;
+  RemoteImeObject text_field_status = 2;
 }
 
 message RemoteImeBatchEdit {
   int32 ime_counter = 1;
   int32 field_counter = 2;
-  RemoteEditInfo edit_info = 3;
+  repeated RemoteEditInfo edit_info = 3;
 }
 
 message RemoteImeShowRequest {

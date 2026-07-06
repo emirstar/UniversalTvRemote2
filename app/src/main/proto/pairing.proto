@@ -25,10 +25,10 @@ option optimize_for = LITE_RUNTIME;
 //   3) client -> server : PairingMessage{ pairing_configuration }
 //      server -> client : PairingMessage{ pairing_configuration_ack }
 //      -> TV now shows a 6-character hex code on screen.
-//   4) client -> server : PairingMessage{ pairing_secret }   (hash incl. code)
-//      server -> client : PairingMessage{ pairing_secret }   (server's hash)
-//      -> if both hashes match, pairing succeeded and the client's TLS
-//         certificate is now trusted by the TV for future connections.
+//   4) client -> server : PairingMessage{ pairing_secret }       (hash incl. code)
+//      server -> client : PairingMessage{ pairing_secret_ack }   (status OK = accepted)
+//      -> if status is STATUS_OK, pairing succeeded and the client's TLS certificate
+//         is now trusted by the TV for future connections.
 // ---------------------------------------------------------------------------
 
 message PairingMessage {
@@ -44,6 +44,14 @@ message PairingMessage {
   PairingConfigurationAck pairing_configuration_ack = 31;
 
   PairingSecret pairing_secret = 40;
+  // BUGFIX: the real Android TV Remote Service replies to our PairingSecret with a
+  // *separate* message at field 41 (SecretAck in the original "polo" pairing protocol
+  // this is based on), not by re-using field 40. Without this field, protobuf silently
+  // discards the server's reply as an unknown field, `pairing_secret` on the parsed
+  // response is left at its empty default, and any code that compares it against the
+  // hash we sent will conclude every pairing attempt failed - even with the correct
+  // on-screen code. See AtvPairingClient.submitCode().
+  PairingSecretAck pairing_secret_ack = 41;
 }
 
 enum Status {
@@ -95,5 +103,9 @@ message PairingConfigurationAck {
 }
 
 message PairingSecret {
+  bytes secret = 1;
+}
+
+message PairingSecretAck {
   bytes secret = 1;
 }
