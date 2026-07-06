@@ -62,15 +62,11 @@ android {
         }
     }
 
-    // The generated protobuf Java sources live under build/generated; make sure
-    // the .proto definitions under src/main/proto are picked up by Android Studio.
-    sourceSets {
-        getByName("main") {
-            proto {
-                srcDir("src/main/proto")
-            }
-        }
-    }
+    // No custom sourceSets block needed: the protobuf plugin already scans
+    // src/main/proto by default for the "main" source set (see the protobuf {}
+    // block below). Configuring `proto { srcDir(...) }` here doesn't compile
+    // under the Kotlin DSL for Android projects - that extension only exists
+    // on Gradle's own SourceSet type, not AndroidSourceSet.
 }
 
 protobuf {
